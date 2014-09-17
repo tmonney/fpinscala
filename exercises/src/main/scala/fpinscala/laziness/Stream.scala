@@ -17,15 +17,59 @@ trait Stream[+A] {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
-  def take(n: Int): Stream[A] = sys.error("todo")
+  
+  def take(n: Int): Stream[A] = this match {
+    case Cons(h, t) if n > 1 => cons(h(), t().take(n - 1))
+    case Cons(h, t) if n == 1 => cons(h(), empty)
+    case _ => empty
+  }
 
-  def drop(n: Int): Stream[A] = sys.error("todo")
+  def drop(n: Int): Stream[A] = {
+    @annotation.tailrec
+    def loop(s: Stream[A], n: Int): Stream[A] = s match {
+      case Empty => Empty
+      case Cons(_, t) if n < 1 => s
+      case Cons(_, t) => loop(t(), n - 1)
+    }
+    loop(this, n)
+  }
 
-  def takeWhile(p: A => Boolean): Stream[A] = sys.error("todo")
+  def takeWhile(p: A => Boolean): Stream[A] = this match {
+    case Cons(h, t) if p(h()) => cons(h(), t().takeWhile(p))
+    case _ => empty
+  }
 
-  def forAll(p: A => Boolean): Boolean = sys.error("todo")
+  def takeWhileR(p: A => Boolean): Stream[A] = 
+    foldRight(empty[A])((a, s) => if(p(a)) cons(a, s) else empty)
+ 
+  @annotation.tailrec
+  final def forAll(p: A => Boolean): Boolean = this match {
+    case Empty => true
+    case Cons(h, t) if p(h()) => t() forAll p
+    case _ => false
+  }
+
+  def forAllR(p: A => Boolean): Boolean = 
+    foldRight(true)((a, b) => p(a) && b)
+
+  def headOption: Option[A] = 
+    foldRight(None: Option[A])((a, _) => Some(a))
+
+  def map[B](f: A => B): Stream[B] = 
+    foldRight(empty[B])((h, t) => cons(f(h), t))
+
+  def filter(p: A => Boolean): Stream[A] =
+    foldRight(empty[A])((h, t) => if (p(h)) cons(h, t) else t)
+
+  def append[B >: A](b: => Stream[B]): Stream[B] = 
+    foldRight(b)((h, t) => cons(h, t))
+
+  def flatMap[B](f: A => Stream[B]): Stream[B] = 
+    foldRight(empty[B])((a, b) => f(a) append b)
 
   def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
+
+  def toList: List[A] = foldRight(List[A]())((h, t) => h :: t)
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
@@ -44,7 +88,23 @@ object Stream {
     else cons(as.head, apply(as.tail: _*))
 
   val ones: Stream[Int] = Stream.cons(1, ones)
-  def from(n: Int): Stream[Int] = sys.error("todo")
+  
+  def constant(c: Int): Stream[Int] = cons(c, constant(c))
 
-  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = sys.error("todo")
+  def constantL(c: Int): Stream[Int] = {
+    lazy val tail: Stream[Int] = Cons(() => c, () => tail)
+    tail
+  }
+  
+  def from(n: Int): Stream[Int] = cons(n, from(n + 1))
+
+  def fibs: Stream[Int] = {
+    def loop(a: Int, b: Int): Stream[Int] = cons(a, loop(b, a + b))
+    loop(0, 1)
+  }
+
+  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = f(z) match {
+    case None => empty
+    case Some((h, t)) => cons(h, unfold(t)(f))
+  }
 }
