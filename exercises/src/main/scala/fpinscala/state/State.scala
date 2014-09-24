@@ -114,8 +114,9 @@ object RNG {
     flatMap(ra)(a => map(rb)(b => f(a, b)))
 }
 
+import State._
+
 case class State[S, +A](run: S => (A, S)) {
-  import State._
 
   def map[B](f: A => B): State[S, B] =
     flatMap(a => unit(f(a)))
@@ -144,6 +145,30 @@ object State {
   def sequenceL[S, A](fs: List[State[S, A]]): State[S, List[A]] =
     fs.reverse.foldLeft(unit[S, List[A]](Nil)) { (acc, f) => (f map2 acc)(_ :: _) }
 
+  def modify[S](f: S => S): State[S, Unit] = for {
+    s <- get
+    _ <- set(f(s))
+  } yield ()
+
+  def get[S]: State[S, S] = State(s => (s, s))
+
+  def set[S](s: S): State[S, Unit] = State(_ => ((), s))
+
   type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+
+    def handle(i: Input, m: Machine): Machine = (i, m) match  {
+      case (Turn, Machine(false, candies, coins)) if candies > 0 => Machine(true, candies - 1, coins)
+      case (Coin, Machine(true, candies, coins)) => Machine(false, candies, coins + 1)
+      case (_, Machine(_, 0, _)) => m
+      case (Turn, Machine(true, _, _)) => m
+      case (Coin, Machine(false, _, _)) => m
+    }
+
+    for {
+      _ <- sequence(inputs.map(i => modify((m: Machine) => handle(i, m))))
+      s <- get
+    } yield(s.candies, s.coins)
+  }
 }
