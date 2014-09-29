@@ -47,7 +47,7 @@ object Par {
 
   def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = fork {
     // a function that asynchronously evaluates the predicate for an element and puts it in a List if the predicate is true
-    val g = (a: A) => asyncF((aa: A) => if(f(aa)) List(aa) else List[A]())(a)
+    val g = (a: A) => asyncF((aa: A) => if (f(aa)) List(aa) else List[A]())(a)
     val pars: Par[List[List[A]]] = sequence(as.map(g))
     map(pars)(_.flatten)
   }
@@ -69,20 +69,41 @@ object Par {
   }
 
   def choice2[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
-    choiceN(map(cond)(b => if(b) 0 else 1))(List(t, f))
+    choiceN(map(cond)(b => if (b) 0 else 1))(List(t, f))
 
   def choiceMap[K, V](key: Par[K])(choices: Map[K, Par[V]]): Par[V] = es => {
     val k = run(es)(key).get
     run(es)(choices(k))
   }
 
-  def chooser[A,B](pa: Par[A])(choices: A => Par[B]): Par[B] = es => {
+  def chooser[A, B](pa: Par[A])(choices: A => Par[B]): Par[B] = es => {
     val a = run(es)(pa).get
     run(es)(choices(a))
   }
 
   def choiceViaChooser[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
-    chooser(cond)(b => if(b) t else f)
+    chooser(cond)(b => if (b) t else f)
+
+  def choiceNviaChooser[A](n: Par[Int])(choices: List[Par[A]]): Par[A] =
+    chooser(n)(choices)
+
+  def flatMap[A, B](pa: Par[A])(f: A => Par[B]): Par[B] = es => {
+    val a = run(es)(pa).get
+    run(es)(f(a))
+  }
+
+  def join[A](ppa: Par[Par[A]]): Par[A] = es => {
+    val pa = run(es)(ppa).get
+    run(es)(pa)
+  }
+
+  def flatMapViaJoin[A, B](a: Par[A])(f: A => Par[B]): Par[B] =
+    join(map(a)(f))
+
+  def identity[A](a: A) = a
+
+  def joinViaFlatMap[A](a: Par[Par[A]]): Par[A] =
+    flatMap(a)(identity)
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
